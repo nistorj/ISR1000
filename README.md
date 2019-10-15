@@ -96,6 +96,31 @@ c1100(config-app-hosting-gateway0)# app-default-gateway 10.0.99.1 guest-interfac
 
 These do not throw any error and work when enabling guest-shell.
 
+**Note**: If you plan to configure IPv6 you need to supply the `netmask` entry.  Most people would know this as the `prefix` in IPv6, eg:
+```
+c1100(config-app-hosting-gateway0)#guest-ipaddress ?
+  A.B.C.D     Application/Guest IP Address
+  X:X:X:X::X  Application/Guest IP Address
+c1100(config-app-hosting-gateway0)#guest-ipaddress 2600:AABB:1001:2199::10 netmask ?
+  A.B.C.D     Netmask
+  X:X:X:X::X  Netmask
+c1100(config-app-hosting-gateway0)#
+c1100(config-app-hosting-gateway0)#guest-ipaddress 2600:AABB:1001:2199::10 netmask ffff:ffff:ffff:ffff:0000:0000:0000:0000
+c1100(config-app-hosting-gateway0)# exit
+c1100(config-app-hosting)# app-default-gateway 2600:AABB:1001:2199::1 guest-interface 0
+
+
+cfg snipit:
+app-hosting appid guestshell
+ app-vnic gateway0 virtualportgroup 0 guest-interface 0
+  guest-ipaddress 2600:AABB:1001:2199::10 netmask ffff:ffff:ffff:ffff::
+ app-default-gateway 2600:AABB:1001:2199::1 guest-interface 0
+end
+```
+
+You will also need to disable and re-enable Guest Shell for this to take effect.  Note that the IPv4 information is somehow kept.
+
+
 #### 4. Enable Guest Shell running
 Once we have the required configuration in place we can enable Guest Shell.  If you do not have the appropriate amount of space you will see an error such as the following:
 
@@ -162,4 +187,104 @@ New password:
 ```
 
 ### Steps to update and manage Linux/apps under Guest Shell
+
+#### Information about the system
+The GuestShell Linux setup is by default CentOS 7.5.1804 (AltArch) when deployed on IOS-XE 16.12.1a.  You can find more information about this flavour at `CentOS AltArch SIG - AArch64 (http://wiki.centos.org/SpecialInterestGroup/AltArch/AArch64)`.
+
+```
+[guestshell@guestshell ~]$ uname -a
+Linux guestshell 4.4.180-armada-17.10.1 #1 SMP Fri Jun 7 14:46:05 PDT 2019 aarch64 aarch64 aarch64 GNU/Linux
+[guestshell@guestshell ~]$ cat /etc/redhat-release
+CentOS Linux release 7.5.1804 (AltArch)
+[guestshell@guestshell ~]$
+```
+
+There are four (4) processor cores enabled for Guest Shell:
+
+```
+[guestshell@guestshell ~]$ cat /proc/cpuinfo
+processor	: 0 (1..3)
+BogoMIPS	: 50.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd08
+CPU revision	: 1
+```
+
+Memory:
+
+```
+[guestshell@guestshell ~]$ free
+              total        used        free      shared  buff/cache   available
+Mem:        4037112     1528996      878184      133216     1629932     2091544
+Swap:             0           0           0
+[guestshell@guestshell ~]$
+```
+
+The initial list of processes:
+```
+[guestshell@guestshell ~]$ ps axuww
+USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root         1  0.0  0.0   7504  3172 ?        Ss   02:33   0:00 /sbin/init
+root        15  0.0  0.0   9132  1608 ?        Ss   02:33   0:00 /usr/lib/systemd/systemd-journald
+root        31  0.0  0.0  17676  4024 ?        Ss   02:33   0:00 /usr/sbin/sshd -D
+dbus        36  0.0  0.0   8200  1948 ?        Ss   02:33   0:00 /usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation
+root        41  0.0  0.0 160856  2884 ?        Ssl  02:33   0:00 /usr/sbin/rsyslogd -n
+root        42  0.0  0.0   4412  1548 ?        Ss   02:33   0:00 /usr/lib/systemd/systemd-logind
+root        43  0.0  0.0   2184   772 ?        Ss   02:33   0:00 /sbin/agetty --noclear ttyS1 vt220
+root        44  0.0  0.0   4340  1352 ?        Ss   02:33   0:00 /usr/sbin/crond -n
+root        45  0.0  0.0   2184   708 pts/3    Ss+  02:33   0:00 /sbin/agetty --noclear --keep-baud pts/3 115200 38400 9600 vt220
+root        46  0.0  0.0   2184   704 pts/0    Ss+  02:33   0:00 /sbin/agetty --noclear ttyS0 vt220
+root        47  0.0  0.0   2184   708 pts/1    Ss+  02:33   0:00 /sbin/agetty --noclear --keep-baud pts/1 115200 38400 9600 vt220
+root        48  0.0  0.0   2184   704 pts/2    Ss+  02:33   0:00 /sbin/agetty --noclear --keep-baud pts/2 115200 38400 9600 vt220
+root        68  0.0  0.1  20208  5028 ?        Rs   02:36   0:00 sshd: guestshell@pts/4
+guestsh+    69  0.0  0.0   3736  1792 pts/4    Ss   02:36   0:00 bash
+guestsh+   111  0.0  0.0   7932  1588 pts/4    R+   02:52   0:00 ps axuww
+[guestshell@guestshell ~]$
+```
+
+
+#### Adding DNS resolvers and setting the hostname
+Let's first complete a couple steps to get the basics going.  First we will set the hostname on the system:
+
+```
+[root@guestshell guestshell]# cat /etc/hostname
+guestshell
+[root@guestshell guestshell]# echo "c1100gs" > /etc/hostname
+[root@guestshell guestshell]#
+[root@guestshell guestshell]# cat /etc/hostname
+c1100gs
+[root@guestshell guestshell]#
+```
+
+Next we set some DNS resolvers so that we can't access resources by hostnames.  Here we edit /etc/resolv.conf with `vi` for example and use something similar to:
+
+
+```
+domain home.local
+nameserver 9.9.9.9
+nameserver 8.8.8.8
+options timeout:2 attempts:2 rotate
+```
+
+**NOTE**: This information is not saved if you disable and re-enable Guest Shell.  One option may be to edit `/etc/rc.local` and put in some auto-populating inforamtion there.
+
+For more detailed info on options for this file you can checkout `https://ibm.co/2oWO3Mh`.
+
+#### Updating to the latest revision of the OS.
+Just like any other CentOS installation the simplest way to get up to date is to simply run a `yum upgrade` on the system.  The initial upgrade will update 95 Packages.
+
+**NOTE**: You will consistently run into a failed package update with the following -- you can ignore this.
+
+```
+Failed:
+  shadow-utils.aarch64 2:4.1.5.1-24.el7                         shadow-utils.aarch64 2:4.6-5.el7
+```
+
+After the `yum upgrade` is complete, reboot the system and you will find that you have moved to a later revision:
+was: `CentOS Linux release 7.5.1804 (AltArch)`
+now: `CentOS Linux release 7.7.1908 (AltArch)`
+
 
