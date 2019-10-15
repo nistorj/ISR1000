@@ -118,7 +118,7 @@ app-hosting appid guestshell
 end
 ```
 
-You will also need to disable and re-enable Guest Shell for this to take effect.  Note that the IPv4 information is somehow kept.
+**IMPORTANT**: The IPv6 information does not work passing over to Guest Shell.  One workaround is to enable IPv6 on the VirtualPortGroup0 and allow RA (router advertisement) messages to go out.  You can always set a static in the configuration files however it may be easier to allow stateless auto config to just do its job.
 
 
 #### 4. Enable Guest Shell running
