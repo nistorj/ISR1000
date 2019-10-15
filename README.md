@@ -284,7 +284,9 @@ Failed:
 ```
 
 After the `yum upgrade` is complete, reboot the system and you will find that you have moved to a later revision:
+
 was: `CentOS Linux release 7.5.1804 (AltArch)`
+
 now: `CentOS Linux release 7.7.1908 (AltArch)`
 
 
